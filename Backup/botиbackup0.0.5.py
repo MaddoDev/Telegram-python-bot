@@ -1,83 +1,43 @@
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import asyncio
 from PyCharacterAI import Client
-from llama_cpp import Llama
-from data import PERSONALITIES, GENRES
-from apikey import TELEGRAM_BOT_TOKEN, CHARACTER_AI_TOKEN
-import json
+from Vocabulary.vocabulary import PERSONALITIES, GENRES
+from API.apikey import TELEGRAM_BOT_TOKEN, CHARACTER_AI_TOKEN
+
 # Текущая активная личность
 current_character_id = PERSONALITIES["Sweetie"]
 
 # Инициализируем клиент AI-чата
 ai_client = Client()
 
-# Инициализируем нейросеть Kunoichi
-llm = Llama(
-      model_path=r"C:\Users\SystemX\Desktop\PyCAI\kunoichi-7b.Q4_K_M.gguf",
-      n_gpu_layers=-1, # Uncomment to use GPU acceleration
-      max_tokens=256,
-      # seed=1337, # Uncomment to set a specific seed
-      n_ctx=2048, # Uncomment to increase the context window
-)
-
-KUNOICHI_MODE = 1
-
-async def start_kunoichi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Вы в режиме общения с нейросетью Kunoichi. Пожалуйста, введите ваш вопрос.")
-    return KUNOICHI_MODE
-
-async def handle_kunoichi_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
-    prompt = "###" + user_input + "\nAssistant:"
-    output = llm(
-        prompt,
-        max_tokens=None,
-        stop=["###"],
-        echo=False
-)
-    if 'choices' in output and len(output['choices']) > 0:
-        response_text = output['choices'][0]['text'].strip()
-    else:
-        response_text = "Sorry, I couldn't generate a response."
-    await update.message.reply_text(response_text)
-    return KUNOICHI_MODE
-
-async def stop_kunoichi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Вы вышли из режима Kunoichi.")
-    return ConversationHandler.END
-
-conv_handler = ConversationHandler(
-    entry_points=[CommandHandler('kunoichi', start_kunoichi)],
-    states={
-        KUNOICHI_MODE: [MessageHandler(filters.TEXT & ~filters.Command('/stop_kunoichi'), handle_kunoichi_message)],
-    },
-    fallbacks=[CommandHandler('stop_kunoichi', stop_kunoichi)]
-)
-
-
 # Кнопка под сообщением бота, она же - инлайн-кнопка
 inline_buttons = [
-    [InlineKeyboardButton(genre, callback_data=genre)] for genre in GENRES
-]
+            [InlineKeyboardButton(genre, callback_data=genre)] for genre in GENRES
+        ]
 inline_reply_markup = InlineKeyboardMarkup(inline_buttons)
 
-async def authenticate_and_create_chat():
-    await ai_client.authenticate_with_token(CHARACTER_AI_TOKEN)
+async def authenticate_and_create_chat(): # Должен создавать новый чат, но не делает, надо будет потом это проверить
+    await ai_client.authenticate_with_token(CHARACTER_AI_TOKEN) # Все проблемы из-за него, за ним глаз да глаз
     return await ai_client.create_or_continue_chat(current_character_id)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = [
         [KeyboardButton("Выбрать жанр")],
         [KeyboardButton("Купить доступ к NSFW версии чат-бота")],
-        [KeyboardButton("Общаться с Kunoichi")],
-        [KeyboardButton("Контакты")],
-    ]
+        [KeyboardButton("Контакты")]
+        ]
     reply_markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
     await update.message.reply_text("Привет! Что вы хотите сделать?", reply_markup=reply_markup)
 
+async def show_personalities(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [[KeyboardButton(personality)] for personality in PERSONALITIES.keys()]
+    buttons.append([KeyboardButton("Вернуться в начало")])
+    reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
+    await update.message.reply_text('Выберите личность:', reply_markup=reply_markup)
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global current_character_id
+    global current_character_id, ai_chat
     text = update.message.text
 
     if text == "Вернуться в начало":
@@ -99,17 +59,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Извините, не удалось получить ответ от личности.")
             return
         await update.message.reply_text(ai_response.text)
-    # else:
-    #     output = llm(
-    #         text + " A: ", # Prompt
-    #         max_tokens=32, # Generate up to 32 tokens, set to None to generate up to the end of the context window
-    #         stop=["Q:", "\n"], # Stop generating just before the model would generate a new question
-    #         echo=True # Echo the prompt back in the output
-    #     )
-    #     await update.message.reply_text(output)
+    else:
+        ai_chat = await authenticate_and_create_chat()
+        ai_response = await ai_chat.send_message(text)
+        await update.message.reply_text(ai_response.text)
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global current_character_id
+    global current_character_id, ai_chat
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -127,17 +83,16 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(f"Вы выбрали личность: {data}")
 
 if __name__ == '__main__':   # Запуск бота
-
+    
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
-
+    
     callback_query_handler = CallbackQueryHandler(handle_callback_query)
     start_handler = CommandHandler('start', start)
     message_handler = MessageHandler(filters.TEXT, handle_message)
 
-    application.add_handler(conv_handler)
     application.add_handler(start_handler)
     application.add_handler(message_handler)
     application.add_handler(callback_query_handler)
-
+    
     application.run_polling()
+    
