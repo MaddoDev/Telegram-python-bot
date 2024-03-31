@@ -1,0 +1,10 @@
+TELEGRAM_BOT_TOKEN = '6571526533:AAGVCt4pOOe24T3yymLVioQja6pPSzN6teE'
+CHARACTER_AI_TOKEN = '9938692966813a4e31c9ce5cc9d306ffd22c369d'
+
+PERSONALITIES = {
+    "Elon Musk": "b_Yo9_TKUggpWjoftwf3AqZCS4FY1n4T0cC8aVEdhY4",
+    "Sweetie": "0klw7c6BSjwHDTiif9hc14mLemXRWKxanUd1ekVw2h8",
+    "Giga Chad": "sEiSmGMnzTdaO7PxIcAPhccXGUh6OPt57E-r595wbE0",
+    "Rias Gremory": "ZkF50Bv9InV3NaWxMAc6n2ksu7w-OerMtGIgz9q0nDw",
+
+}
