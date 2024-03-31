@@ -8,53 +8,84 @@ from API.apikey import TELEGRAM_BOT_TOKEN, CHARACTER_AI_TOKEN
 
 from llama_cpp import Llama
 
-# Initialize the Llama model
+# Запуск Куночи здесь
 llm = Llama(
-    model_path=r"C:\Users\SystemX\Desktop\PyCAI\kunoichi-7b.Q4_K_M.gguf",
-    n_gpu_layers=-1,  # Uncomment to use GPU acceleration
-    # other initialization parameters...
+    model_path=r"C:\Users\SystemX\Desktop\Telegram-python-bot\kunoichi-7b.Q4_K_M.gguf",
+    n_gpu_layers=-1,  # Закоментируй эту строчку, если хочешь, чтобы куноичи работал только на процессоре!
+
 )
 
 KUNOICHI_MODE = 1
+START_MODE = 1
 
 async def start_kunoichi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Вы в режиме общения с нейросетью Kunoichi. Пожалуйста, введите ваш вопрос.")
+    buttons = [[KeyboardButton("Перестать общаться с Куноичи")]]
+    reply_markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+    await update.message.reply_text("Вы в режиме общения с нейросетью Kunoichi. Пожалуйста, введите ваш вопрос.", reply_markup=reply_markup)
     return KUNOICHI_MODE
 
 async def handle_kunoichi_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
     prompt = "###" + user_input + "\nAssistant:"
+
     output = llm(
         prompt,
-        max_tokens=None,
-        stop=["###"],
-        echo=False
-)
+        max_tokens=280, # <- Максимальное количество токенов в сообщении, лучше не менять, иначе он не закончит мысль.
+        stop=["###"], # <- Стоп-слово для модели, иначе будет болтать сам с собой
+        echo=False, # <- параметр, отвечающий за повторение промпта пользователя. 
+        temperature=0.7,  # Установить температуру на 0.7 для получения более разнообразных, но все еще когерентных ответов
+        top_k=50,  # Параметр топ-k для фильтрации токенов с наибольшей вероятностью (50 - хорошее значение)
+        top_p=0.95,  # Параметр топ-p для фильтрации токенов с суммарной вероятностью 0.95
+    )
     if 'choices' in output and len(output['choices']) > 0:
         response_text = output['choices'][0]['text'].strip()
     else:
-        response_text = "Sorry, I couldn't generate a response."
+        response_text = "Упс, не получилось выдать запрос. Модель выдала бяку :("
     await update.message.reply_text(response_text)
     return KUNOICHI_MODE
 
 async def stop_kunoichi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Вы вышли из режима Kunoichi.")
-    return ConversationHandler.END
-
+    await update.message.reply_text("Вы покинули Куноичи :(")
+    await start(update,context)
+    return START_MODE
 conv_handler = ConversationHandler(
-    entry_points=[CommandHandler('kunoichi', start_kunoichi)],
+    entry_points=[MessageHandler(filters.Regex("^Общаться с Куноичи$"), start_kunoichi)],
     states={
-        KUNOICHI_MODE: [MessageHandler(filters.TEXT & ~filters.Command('/stop_kunoichi'), handle_kunoichi_message)],
+        KUNOICHI_MODE: [MessageHandler(filters.TEXT & ~filters.Regex("^Перестать общаться с Куноичи$"), handle_kunoichi_message)],
     },
-    fallbacks=[CommandHandler('stop_kunoichi', stop_kunoichi)]
+    fallbacks=[MessageHandler(filters.Regex("^Перестать общаться с Куноичи$"), stop_kunoichi)]
 )
+
 
 # Текущая активная личность
 current_character_id = PERSONALITIES["Sweetie"]
 
 # Инициализируем клиент AI-чата
 ai_client = Client()
-# Предположим, у вас есть список личностей
+
+async def authenticate_and_create_chat(character_id): # Должен создавать новый чат, но не делает, надо будет потом это проверить
+    await ai_client.authenticate_with_token(CHARACTER_AI_TOKEN) # Все проблемы из-за него, за ним глаз да глаз
+    return await ai_client.create_or_continue_chat(character_id)
+
+# Создаем стартовые кнопочки
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [
+        [KeyboardButton("Выбрать жанр")],
+        [KeyboardButton("Купить доступ к NSFW версии чат-бота")],
+        [KeyboardButton("Общаться с Куноичи")],
+        [KeyboardButton("Контакты")]
+        ]
+    reply_markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
+ 
+    await update.message.reply_text("Привет! Что вы хотите сделать?", reply_markup=reply_markup)
+    return START_MODE
+
+async def show_personalities(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    buttons = [[KeyboardButton(personality)] for personality in PERSONALITIES.keys()]
+    buttons.append([KeyboardButton("Вернуться в начало")])
+    reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
+    await update.message.reply_text('Выберите личность:', reply_markup=reply_markup)
+
 def genre_keyboard():
     # Создаем список кнопок, каждая кнопка - это жанр
     buttons = [InlineKeyboardButton(text=genre, callback_data=genre) for genre in GENRES]
@@ -75,27 +106,7 @@ def personality_keyboard(selected_genre):
     keyboard = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
     return InlineKeyboardMarkup(keyboard)
 
-async def authenticate_and_create_chat(character_id): # Должен создавать новый чат, но не делает, надо будет потом это проверить
-    await ai_client.authenticate_with_token(CHARACTER_AI_TOKEN) # Все проблемы из-за него, за ним глаз да глаз
-    return await ai_client.create_or_continue_chat(character_id)
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    buttons = [
-        [KeyboardButton("Выбрать жанр")],
-        [KeyboardButton("Купить доступ к NSFW версии чат-бота")],
-        [KeyboardButton("Общаться с Kunoichi")],
-        [KeyboardButton("Контакты")]
-        ]
-    reply_markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
- 
-    await update.message.reply_text("Привет! Что вы хотите сделать?", reply_markup=reply_markup)
-
-async def show_personalities(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    buttons = [[KeyboardButton(personality)] for personality in PERSONALITIES.keys()]
-    buttons.append([KeyboardButton("Вернуться в начало")])
-    reply_markup = ReplyKeyboardMarkup(buttons, one_time_keyboard=True)
-    await update.message.reply_text('Выберите личность:', reply_markup=reply_markup)
-
+# В этом хендле расписано на какие сообщения реагирует бот.
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_character_id, ai_chat
     text = update.message.text
