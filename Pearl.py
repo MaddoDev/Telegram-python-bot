@@ -1,60 +1,9 @@
 
 from telegram import Update, KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler, ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, CallbackContext
-import asyncio
 from PyCharacterAI import Client
 from Vocabulary.vocabulary import PERSONALITIES, GENRES
 from API.apikey import TELEGRAM_BOT_TOKEN, CHARACTER_AI_TOKEN
-
-from llama_cpp import Llama
-
-# Запуск Куночи здесь
-llm = Llama(
-    model_path=r"C:\Users\SystemX\Desktop\Telegram-python-bot\kunoichi-7b.Q4_K_M.gguf",
-    n_gpu_layers=-1,  # Закоментируй эту строчку, если хочешь, чтобы куноичи работал только на процессоре!
-
-)
-
-KUNOICHI_MODE = 1
-START_MODE = 1
-
-async def start_kunoichi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    buttons = [[KeyboardButton("Перестать общаться с Куноичи")]]
-    reply_markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
-    await update.message.reply_text("Вы в режиме общения с нейросетью Kunoichi. Пожалуйста, введите ваш вопрос.", reply_markup=reply_markup)
-    return KUNOICHI_MODE
-
-async def handle_kunoichi_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_input = update.message.text
-    prompt = "###" + user_input + "\nAssistant:"
-
-    output = llm(
-        prompt,
-        max_tokens=280, # <- Максимальное количество токенов в сообщении, лучше не менять, иначе он не закончит мысль.
-        stop=["###"], # <- Стоп-слово для модели, иначе будет болтать сам с собой
-        echo=False, # <- параметр, отвечающий за повторение промпта пользователя. 
-        temperature=0.7,  # Установить температуру на 0.7 для получения более разнообразных, но все еще когерентных ответов
-        top_k=50,  # Параметр топ-k для фильтрации токенов с наибольшей вероятностью (50 - хорошее значение)
-        top_p=0.95,  # Параметр топ-p для фильтрации токенов с суммарной вероятностью 0.95
-    )
-    if 'choices' in output and len(output['choices']) > 0:
-        response_text = output['choices'][0]['text'].strip()
-    else:
-        response_text = "Упс, не получилось выдать запрос. Модель выдала бяку :("
-    await update.message.reply_text(response_text)
-    return KUNOICHI_MODE
-
-async def stop_kunoichi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Вы покинули Куноичи :(")
-    await start(update,context)
-    return START_MODE
-conv_handler = ConversationHandler(
-    entry_points=[MessageHandler(filters.Regex("^Общаться с Куноичи$"), start_kunoichi)],
-    states={
-        KUNOICHI_MODE: [MessageHandler(filters.TEXT & ~filters.Regex("^Перестать общаться с Куноичи$"), handle_kunoichi_message)],
-    },
-    fallbacks=[MessageHandler(filters.Regex("^Перестать общаться с Куноичи$"), stop_kunoichi)]
-)
 
 
 # Текущая активная личность
@@ -76,9 +25,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [KeyboardButton("Контакты")]
         ]
     reply_markup = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
- 
     await update.message.reply_text("Привет! Что вы хотите сделать?", reply_markup=reply_markup)
-    return START_MODE
 
 async def show_personalities(update: Update, context: ContextTypes.DEFAULT_TYPE):
     buttons = [[KeyboardButton(personality)] for personality in PERSONALITIES.keys()]
@@ -170,7 +117,7 @@ if __name__ == '__main__':   # Запуск бота
     start_handler = CommandHandler('start', start)
     message_handler = MessageHandler(filters.TEXT, handle_message)
 
-    application.add_handler(conv_handler)
+
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     application.add_handler(start_handler)
     application.add_handler(message_handler)
